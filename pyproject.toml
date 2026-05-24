@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "climlab-stardust-extension"
+version = "0.1.0"
+description = "Extension package adding stardust functionality on top of climlab"
+requires-python = ">=3.9"
+dependencies = [
+    "climlab",
+    "climlab-rrtmg @ git+https://github.com/stardust-initiative/climlab-rrtmg_stardust.git@v0.5.0",
+    "climlab-sbm-convection @ git+https://github.com/stardust-initiative/climlab-sbm-convection_stardust.git@v0.3.0",
+    "numpy",
+    "xarray",
+    "pooch",
+    "requests",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+include = ["climlab_stardust_extension*"]

@@ -1,0 +1,30 @@
+name: climlab_stardust_ext_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy
+  - xarray
+  - pooch
+  - requests
+  - pytest
+  - pytest-cov
+  - scipy
+  # climlab (official) and its Fortran extensions from conda-forge
+  - climlab
+  - climlab-cam3-radiation
+  - climlab-emanuel-convection
+  # Build tools needed to compile the Stardust Fortran wrappers from source
+  - meson-python
+  - meson
+  - numpy
+  - compilers
+  - pip
+  - pip:
+    # Stardust forks of the climlab Fortran wrappers, pinned by tag.
+    # Built from source on install (compilers + meson are above).
+    - git+https://github.com/stardust-initiative/climlab-rrtmg_stardust.git@v0.5.0
+    - git+https://github.com/stardust-initiative/climlab-sbm-convection_stardust.git@v0.3.0
+    # Install this extension package in development mode
+    - -e .
