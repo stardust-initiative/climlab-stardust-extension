@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.pytest_cache/
+*.so
+
+# Test artifacts — diagnostic plots emitted by the 2-D transport test suite
+tests/test_plots/
+
+# Claude Code per-session state
+.claude/
