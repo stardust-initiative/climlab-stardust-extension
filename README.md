@@ -101,7 +101,12 @@ This package is consumed by [`stardust-climate`](https://github.com/stardust-ini
 
 ## Installation
 
-The two Stardust forks (`climlab-rrtmg`, `climlab-sbm-convection`) are pinned as URL dependencies in `pyproject.toml`, so a single `pip install` resolves the whole chain:
+This package is normally pulled transitively as a URL-pinned dependency of
+[`stardust-climate`](https://github.com/stardust-initiative/stardust-climate);
+the canonical paper-reproduction install lives in the umbrella repository
+[`solid-sai-2d-paper`](https://github.com/stardust-initiative/solid-sai-2d-paper).
+
+To **develop on this package directly** (or use it without the runner), install it locally:
 
 ```bash
 conda create -n climlab_stardust_ext_env python=3.11 -y
@@ -110,14 +115,14 @@ conda install -c conda-forge climlab compilers meson meson-python -y
 pip install -e .
 ```
 
+The two Stardust forks (`climlab-rrtmg`, `climlab-sbm-convection`) are pinned as URL dependencies in `pyproject.toml`, so `pip install` compiles them from source — that's why the conda environment above includes the C/Fortran toolchain.
+
 Alternatively, the `environment.yml` shipped here pins both forks via `pip:` URLs and can be used directly:
 
 ```bash
 conda env create -f environment.yml
 conda activate climlab_stardust_ext_env
 ```
-
-The Fortran forks are compiled from source during install, so a working C/Fortran compiler chain is required (the conda environment above provides it).
 
 ### Verify
 
@@ -126,7 +131,7 @@ python -c "import climlab_stardust_extension; print('ok')"
 python -m pytest tests/ -q
 ```
 
-All 67 tests should pass (as of `v0.1.0`).
+All 67 tests should pass (as of `v0.1.2`).
 
 ---
 
