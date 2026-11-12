@@ -18,9 +18,14 @@ class AtmosphericData(TimeDependentProcess):
                  param_configs=None,  # Dict of dicts: {'u': {'data': xarray, 'method': 'linear', 'grid_type': 'centers*centers'}, ...}
                  t_0=None,  # datetime object for initial time
                  time_type=1,  # 0: constant, 1: yearly cycle, 2: real date
+                 symmetric_diffusion=False,
                  **kwargs):
         super(AtmosphericData, self).__init__(**kwargs)
 
+        # Opt-in: full-stencil support and PSD bounds for a symmetric tensor.
+        # Ordinary atmospheric fields and the nominal baseline retain their
+        # established interpolation/extrapolation behavior.
+        self.symmetric_diffusion = symmetric_diffusion
         # Initialize t_0 as datetime
         if t_0 is None:
             self._current_time = datetime(2000, 1, 1)  # Default start
@@ -120,6 +125,29 @@ class AtmosphericData(TimeDependentProcess):
         --------
         xarray.DataArray : Data interpolated to the target grid
         """
+        if self.symmetric_diffusion and data.attrs.get('diffusion_tensor_component'):
+            target_lat, target_p = self._get_target_grid(grid_type)
+            if data.attrs.get('diffusion_pregridded'):
+                # The input engine may supply a tensor already prepared on
+                # these exact staggered coordinates. Avoid a second bilinear
+                # interpolation: at zero/large-gradient interfaces that can
+                # introduce roundoff-negative diagonals or blur support.
+                np.testing.assert_array_equal(data.latitude.values, target_lat,
+                    err_msg='Prepared diffusion latitude grid mismatch')
+                np.testing.assert_array_equal(data.level.values, target_p,
+                    err_msg='Prepared diffusion pressure grid mismatch')
+                result = data.drop_vars('tensor_valid') if 'tensor_valid' in data.coords else data
+                if not np.isfinite(result.values).all():
+                    raise ValueError('Prepared diffusion must be finite, including explicit unsupported zeros')
+                return result.rename(latitude='lat').transpose('month', 'lat', 'level')
+            coordinates = dict(latitude=target_lat, level=target_p)
+            validity = data.coords['tensor_valid'].reset_coords(drop=True).interp(
+                coordinates, method='linear', kwargs={'fill_value': 0.})
+            result = data.drop_vars('tensor_valid').interp(
+                coordinates, method='linear', kwargs={'fill_value': 0.})
+            result = result.where(validity >= 1-1e-12, 0).fillna(0)
+            return result.rename(latitude='lat').transpose('month', 'lat', 'level')
+
         # Get target grids
         target_grids = self._get_target_grid(grid_type)
         is_1d = len(target_grids) == 1
@@ -326,6 +354,25 @@ class AtmosphericData(TimeDependentProcess):
             # Ensure dimensions are ordered as (lat, level)
             interpolated[param_name] = self._ensure_lat_level_order(result)
 
+        if self.symmetric_diffusion and {'kyy','kzz','kyz'} <= interpolated.keys():
+            from .tensor_diffusion import bound_staggered_cross
+            yy, pp, cross = [interpolated[k].values for k in ('kyy','kzz','kyz')]
+            limited, stats = bound_staggered_cross(yy, pp, cross, self._lat_centers,
+                self._lat_bounds, self._lev_centers, self._lev_bounds)
+            changed = int((cross != limited).sum())
+            interpolated['kyz'].values[:] = limited
+            if not hasattr(self, 'tensor_audit'):
+                self.tensor_audit = dict(checks=0, max_corner_ratio=0.,
+                    max_y_face_ratio=0., max_p_face_ratio=0., changed_corner_evaluations=0,
+                    extra_face_limited_corner_evaluations=0, monthly_checks={})
+            audit = self.tensor_audit
+            audit['checks'] += 1
+            for key in ('max_corner_ratio','max_y_face_ratio','max_p_face_ratio'):
+                audit[key] = max(audit[key], stats[key])
+            audit['changed_corner_evaluations'] += changed
+            audit['extra_face_limited_corner_evaluations'] += stats['extra_face_limited_corners']
+            month = str(time.month)
+            audit['monthly_checks'][month] = audit['monthly_checks'].get(month, 0) + 1
         return interpolated
 
     def _interp_monthly_cycle(self, data, time_dim, month_frac, method):
