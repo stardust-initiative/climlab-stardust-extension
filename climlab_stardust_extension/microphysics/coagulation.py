@@ -213,10 +213,16 @@ class Coagulation(TimeDependentProcess):
                 dx_dt[j, :, :] -= dmj
                 target_bin = int(self.bins_trajectories[i, j])
                 f = self.bins_trajectories[i, j] - target_bin
-                if target_bin == (self.nbins-1) or f < 1e-3:
+                if target_bin == (self.nbins-1):
+                    # Retain the historical mass-conserving overflow closure.
+                    # Products above the last pivot cannot also conserve number.
                     dx_dt[target_bin, :, :] += (dmi + dmj)
                 else:
-                    dx_dt[target_bin, :, :] += (1-f) * (dmi + dmj)
-                    dx_dt[target_bin+1, :, :] += f * (dmi + dmj)
+                    # Interpolation gives product NUMBER fractions. Convert
+                    # to mass fractions for the prognostic mass mixing ratios.
+                    # This preserves one product and its mass per collision.
+                    product_cores = self.cores_vec[i] + self.cores_vec[j]
+                    dx_dt[target_bin, :, :] += (1-f) * self.cores_vec[target_bin] / product_cores * (dmi + dmj)
+                    dx_dt[target_bin+1, :, :] += f * self.cores_vec[target_bin+1] / product_cores * (dmi + dmj)
 
         return dx_dt

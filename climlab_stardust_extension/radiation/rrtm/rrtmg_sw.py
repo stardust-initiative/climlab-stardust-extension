@@ -48,6 +48,54 @@ wavenum_delta = np.diff(wavenum_bounds)
 wavenum_ax = Axis(axis_type='abstract', bounds=wavenum_bounds)
 
 
+def _shortwave_without_dark_columns(ncol, nlay, *args):
+    """Skip unilluminated columns without changing native McICA seed indices.
+
+    args follow the existing ensemble ABI, after ncol/nlay. No native-library
+    changes. For column-independent seeds, compact the arrays in one batch.
+    Otherwise retain original ncol/icol through the existing single-column ABI.
+    """
+    coszen = np.asarray(args[33])
+    if not np.isfinite(coszen).all():
+        raise ValueError("Nonfinite solar zenith cosine")
+    dark = coszen <= 0.
+    if not dark.any():
+        return _rrtmg_sw.climlab_rrtmg_sw_ensemble(ncol, nlay, *args)
+    shapes = [(ncol, nlay+1), (ncol, nlay+1), (ncol, nlay),
+              (ncol, nlay+1), (ncol, nlay+1), (ncol, nlay)]
+    shapes += [(ncol, nlay+1, 14)] * 4
+    out = tuple(np.zeros(shape, dtype=np.float64) for shape in shapes)
+    light = np.flatnonzero(~dark)
+    if not light.size:
+        return out
+    # Native shift=ind_ens when col_by_col; otherwise ind_ens*ncol+icol-1.
+    if bool(args[3]) or not bool(args[4]):
+        reduced = list(args)
+        column_first = (list(range(8, 18)) + list(range(22, 32)) +
+                        [33, 34] + list(range(41, 45)) + list(range(49, 53)))
+        for k in column_first:
+            reduced[k] = np.asfortranarray(np.asarray(args[k])[light])
+        for k in range(18, 22):
+            reduced[k] = np.asfortranarray(np.asarray(args[k])[:, light, :])
+        result = _rrtmg_sw.climlab_rrtmg_sw_ensemble(len(light), nlay, *reduced)
+        for target, value in zip(out, result):
+            target[light] = value
+    else:
+        # Preserve original column count, index, ensemble order, and seed.
+        # Preconvert once to avoid copying all inputs for every native call.
+        prepared = [np.asfortranarray(a) if np.ndim(a) > 1 else a for a in args]
+        repeats = int(args[2]) if int(args[5]) > 0 and bool(args[4]) else 1
+        for col in light:
+            for member in range(1, repeats+1):
+                result = _rrtmg_sw.climlab_rrtmg_sw_single_col(
+                    int(col)+1, member, *prepared, ncol=ncol, nlay=nlay)
+                for target, value in zip(out, result):
+                    target[col] += value[0]
+        for target in out:
+            target /= repeats
+    return out
+
+
 class RRTMG_SW_extended(RRTMG_SW):
     """Extended RRTMG shortwave with ensemble averaging and aerosol layer.
 
@@ -221,6 +269,10 @@ class RRTMG_SW_extended(RRTMG_SW):
          add_aero_layer, r_mu, t_mu, r_bar, t_bar) = \
             self._prepare_sw_arguments()
 
+        # Compatibility diagnostic: the guard now means all dark columns,
+        # independent of aerosol reflectivity or whether aerosols are enabled.
+        self.polar_night_guard_columns = np.flatnonzero(np.asarray(coszen) <= 0.)
+
         n_rrtmg_repeat = (
             self.n_rrtmg_repeat
             if (icld > 0 and self.do_seed_permutation)
@@ -236,7 +288,7 @@ class RRTMG_SW_extended(RRTMG_SW):
 
         (swuflx, swdflx, swhr, swuflxc, swdflxc, swhrc,
          swuflxspec, swdflxspec, swuflxcspec, swdflxcspec) = \
-            _rrtmg_sw.climlab_rrtmg_sw_ensemble(
+            _shortwave_without_dark_columns(
                 ncol, nlay,
                 seed, irng, n_rrtmg_repeat, col_by_col, do_seed_perm,
                 icld, ispec, iaer, play, plev, tlay, tlev, tsfc,

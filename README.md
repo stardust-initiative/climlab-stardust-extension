@@ -131,7 +131,7 @@ python -c "import climlab_stardust_extension; print('ok')"
 python -m pytest tests/ -q
 ```
 
-All 67 tests should pass (as of `v0.1.2`).
+Run the test suite to verify the installation.
 
 ---
 
@@ -222,7 +222,7 @@ Aerosol optical-property tables and ERA5-derived inputs are loaded via the
 engine — the lean runtime loader + provenance registry that backs the
 paper's input set. Files are content-addressed and fetched on demand from
 the public Zenodo deposit
-([10.5281/zenodo.20271742](https://doi.org/10.5281/zenodo.20271742)),
+([10.5281/zenodo.24163981](https://doi.org/10.5281/zenodo.24163981)),
 sha-256-verified, and locally cached. No credentials required for the
 public release manifest. See the engine's README for backend configuration
 options.

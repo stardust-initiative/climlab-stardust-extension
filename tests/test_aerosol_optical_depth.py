@@ -96,6 +96,25 @@ class TestGetInterpParam:
         assert ix == 0
         assert fac == pytest.approx(0.5)
 
+    def test_nearest_node_above_uses_lower_bracket(self):
+        # Regression: x0 whose *nearest* node is ABOVE it must still
+        # bracket [ix, ix+1] with ix the lower node, not snap up.
+        # (Old argmin-based code returned ix=2, fac=1.0 -> snapped to 2.0.)
+        x_vect = np.array([0.0, 1.0, 2.0, 3.0])
+        ix, fac = AerosolsOptDepTables.get_interp_param(1.9, x_vect)
+        assert ix == 1
+        assert fac == pytest.approx(0.1)  # weight on lower node (1.0)
+
+    def test_nearest_node_below_uses_lower_bracket(self):
+        x_vect = np.array([0.0, 1.0, 2.0, 3.0])
+        ix, fac = AerosolsOptDepTables.get_interp_param(1.1, x_vect)
+        assert ix == 1
+        assert fac == pytest.approx(0.9)
+
+    def test_descending_x_vect_rejected(self):
+        with pytest.raises(AssertionError):
+            AerosolsOptDepTables.get_interp_param(1.0, np.array([3.0, 2.0, 1.0]))
+
 
 class TestToGray:
     def test_uniform_unchanged(self):

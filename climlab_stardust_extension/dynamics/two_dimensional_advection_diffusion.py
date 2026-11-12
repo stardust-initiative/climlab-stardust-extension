@@ -53,7 +53,10 @@ class TwoDimensionalAdvectionDiffusion(TimeDependentProcess):
     Kzz : float or ndarray
         Vertical diffusivity in m²/s. Shape (nlat, nlev+1) at lev boundaries.
     Kyz : float or ndarray
-        Mixed (off-diagonal) diffusivity in m²/s. Shape (nlat+1, nlev+1).
+        Mixed diffusivity in m Pa/s. Shape (nlat+1, nlev+1).
+    cross_diffusion_convention : str
+        "legacy" preserves the inherited operator convention (default).
+        "physical" accepts Dyp in the symmetric tensor F=-D grad(q).
     U : float or ndarray
         Meridional advecting velocity in m/s. Shape (nlat+1, nlev).
     W : float or ndarray
@@ -83,7 +86,9 @@ class TwoDimensionalAdvectionDiffusion(TimeDependentProcess):
                  prescribed_flux=0.,
                  interpolation_order=2,
                  use_limiters=True,
+                 limit_outgoing_flux=False,
                  diagnostic_name_suffix="",
+                 cross_diffusion_convention="legacy",
                  **kwargs):
         super(TwoDimensionalAdvectionDiffusion, self).__init__(**kwargs)
         for dom in list(self.domains.values()):
@@ -106,6 +111,7 @@ class TwoDimensionalAdvectionDiffusion(TimeDependentProcess):
         self.prescribed_flux = prescribed_flux  # flux including boundary conditions
         self.interpolation_order = interpolation_order
         self.use_limiters = use_limiters
+        self.limit_outgoing_flux = bool(limit_outgoing_flux)
         self.U = U  # Advecting velocity in units of [length] / [time]
         self.W = W  # Advecting velocity in units of [hpa] / [time]
         self.W_sedimentation = W_sedimentation
@@ -117,6 +123,9 @@ class TwoDimensionalAdvectionDiffusion(TimeDependentProcess):
         self.rho = rho
         self.Kyy = Kyy  # Diffusivity in units of [length]**2 / [time]
         self.Kzz = Kzz  # Diffusivity in units of [length]**2 / [time]
+        if cross_diffusion_convention not in ("legacy", "physical"):
+            raise ValueError("cross_diffusion_convention must be legacy or physical")
+        self.cross_diffusion_convention = cross_diffusion_convention
         self.Kyz = Kyz
         self.M_air = 2*np.pi*const.a**2.0*np.diff(np.sin(self._phibounds))[:, None] * self._dlevbounds[None,:] / const.g
         self.diagname_total_tracer_mass = 'total_tracer_mass'+diagnostic_name_suffix
@@ -175,7 +184,11 @@ class TwoDimensionalAdvectionDiffusion(TimeDependentProcess):
 
     @property
     def Kyz(self):
-        return self._Kyz * np.cos(self._phibounds[:, None])
+        # The inherited MALTA velocity encodes the opposite mixed sign.
+        # Preserve its historical API by default. Physical selects the tensor
+        # in flux F=-D grad(q), without breaking live forcing-array references.
+        sign = -1 if self.cross_diffusion_convention == "physical" else 1
+        return sign * self._Kyz * np.cos(self._phibounds[:, None])
     @Kyz.setter
     def Kyz(self, Kvalue):
         self._Kyz = Kvalue
@@ -304,6 +317,14 @@ class TwoDimensionalAdvectionDiffusion(TimeDependentProcess):
         # Apply zero-flux boundary conditions
         flux[..., 0] = 0.0
         flux[..., -1] = 0.0
+
+        if self.limit_outgoing_flux:
+            if not np.all(np.asarray(tend_fac_adv) == 1):
+                raise ValueError('Outgoing flux budget requires unit advection tendency factor')
+            from .outgoing_flux_budget import limit_flux
+            physical_flux, _ = limit_flux(
+                flux / flux_sign, tracer, dbounds_2d, self._dt_advdiff)
+            flux = flux_sign * physical_flux
 
         # Store flux for diagnostics (move back to original axis order)
         flux_original = np.moveaxis(flux, -1, axis)
