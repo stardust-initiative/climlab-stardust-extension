@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Least-privilege default token.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint + hygiene + secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the secret scan covers it
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run pre-commit (hygiene + gitleaks)
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
+
+  test:
+    name: tests (py${{ matrix.python-version }})
+    # Keep Python 3.9 available; ubuntu-latest no longer supplies it.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Fortran toolchain (climlab-rrtmg + sbm forks build from source)
+        run: sudo apt-get update && sudo apt-get install -y gfortran
+
+      - name: Install package with test extras
+        run: python -m pip install --upgrade pip && pip install -e '.[test]'
+
+      - name: Run the test suite
+        run: pytest -v
