@@ -24,9 +24,9 @@ dependencies:
   - pip:
     # Stardust forks of the climlab Fortran wrappers, pinned by tag.
     # Built from source on install (compilers + meson are above).
-    - git+https://github.com/stardust-initiative/climlab-rrtmg_stardust.git@v0.5.0
+    - git+https://github.com/stardust-initiative/climlab-rrtmg_stardust.git@v0.5.1
     - git+https://github.com/stardust-initiative/climlab-sbm-convection_stardust.git@v0.3.0
     # Input-data engine (registry, loader, Zenodo backend).
-    - git+https://github.com/stardust-initiative/stardust-2d-inputs.git@v0.2.0
+    - git+https://github.com/stardust-initiative/stardust-2d-inputs.git@v0.2.1
     # Install this extension package in development mode
     - -e .
